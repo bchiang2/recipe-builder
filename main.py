@@ -139,10 +139,9 @@ def main(image_path):
     clear_screen()
     print(f"Identified ingredients {ingredients}")
     feedback_history = []
-
-    recipe = suggest_recipe(ingredients, feedback_history)
-    print(f"Building recipe")
+    print(f"\n\n Building recipe")
     clear_screen()
+    recipe = suggest_recipe(ingredients, feedback_history)
     print("Initial Recipe Suggestion:\n" + recipe)
 
     while True:
@@ -153,8 +152,8 @@ def main(image_path):
         print(f"Applying feedback: {feedback}")
         if feedback.lower() == "done":
             clear_screen()
-            print("Generating Recipe Document")
             print("Final Recipe:\n" + recipe)
+            print("\n\n Generating Recipe Document")
             visual_description = generate_visual_description(recipe)
             print("Visual Description for Image Generation:\n" + visual_description)
             pipe = setup_model()

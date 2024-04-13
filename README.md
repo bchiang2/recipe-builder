@@ -1,4 +1,4 @@
-# Image Analysis and Recipe Generation Tool
+# Echo Recipe
 
 ## Overview
 
