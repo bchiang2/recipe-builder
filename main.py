@@ -1,20 +1,15 @@
 import os
-from datetime import datetime
-
 import click
 import requests
 from io import BytesIO
 import torch
 import logging
+from datetime import datetime
 from huggingface_hub import hf_hub_download
 from safetensors.torch import load_file
-from diffusers import (
-    StableDiffusionXLPipeline,
-    UNet2DConditionModel,
-    EulerDiscreteScheduler,
-)
+from diffusers import StableDiffusionXLPipeline, UNet2DConditionModel, EulerDiscreteScheduler
 import ollama
-import warnings  # Import the warnings module
+import warnings
 
 # Setup logging
 logging.basicConfig(
@@ -27,9 +22,9 @@ logging.basicConfig(
 warnings.simplefilter(action="ignore", category=FutureWarning)
 warnings.simplefilter(
     action="ignore", category=UserWarning
-)  # Add this if the token warning is a UserWarning
+)
 
-# Environment variable to potentially suppress tqdm bars (if used by the library)
+# Environment variable to potentially suppress tqdm bars
 os.environ["TQDM_DISABLE"] = "True"
 
 # Constants for prompts
@@ -39,38 +34,34 @@ RECIPE_ADJUSTMENT_PROMPT = "Adjust the given recipe based solely on the feedback
 VISUAL_DESCRIPTION_PROMPT = "Provide a concise, detailed visual description for a dish made with these ingredients: {ingredients}. Focus strictly on the appearance of the prepared dish, including texture and color details, without any general cooking or serving suggestions."
 
 
+def clear_screen():
+    """Clears the console screen."""
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+
 def setup_model():
-    """Set up and return the image generation model."""
     base = "stabilityai/stable-diffusion-xl-base-1.0"
     repo = "ByteDance/SDXL-Lightning"
     ckpt = "sdxl_lightning_4step_unet.safetensors"
-
     unet = UNet2DConditionModel.from_config(base, subfolder="unet").to(
         "mps", torch.float16
     )
     unet.load_state_dict(load_file(hf_hub_download(repo, ckpt), device="mps"))
-
     pipe = StableDiffusionXLPipeline.from_pretrained(
         base, unet=unet, torch_dtype=torch.float16, variant="fp16"
     ).to("mps")
-
     pipe.scheduler = EulerDiscreteScheduler.from_config(
         pipe.scheduler.config, timestep_spacing="trailing"
     )
-
     return pipe
 
 
 def generate_image(pipe, description):
-    """Generate and save an image based on the given description."""
     image = pipe(description, num_inference_steps=4, guidance_scale=0).images[0]
-    # Create a unique timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    # Clean the description to create a valid filename
     valid_description = "".join(
         char for char in description if char.isalnum() or char in [" ", "_"]
     ).replace(" ", "_")
-    # Limit the description to avoid excessively long file names
     if len(valid_description) > 50:
         valid_description = valid_description[:50]
     output_path = f"generated_image_{valid_description}_{timestamp}.png"
@@ -80,7 +71,6 @@ def generate_image(pipe, description):
 
 
 def load_image(image_path):
-    """Load and return image from the given path or URL."""
     if image_path.startswith("http://") or image_path.startswith("https://"):
         response = requests.get(image_path)
         return BytesIO(response.content)
@@ -90,7 +80,6 @@ def load_image(image_path):
 
 
 def analyze_image_for_food(image_data):
-    """Analyze the image and return a description of visible food items."""
     response = ollama.chat(
         model="llava",
         messages=[
@@ -101,13 +90,11 @@ def analyze_image_for_food(image_data):
 
 
 def suggest_recipe(ingredients, feedback_history):
-    """Suggest a recipe based on ingredients and feedback."""
     prompt = RECIPE_ADJUSTMENT_PROMPT if feedback_history else RECIPE_SUGGESTION_PROMPT
     feedback_text = "; ".join(feedback_history) if feedback_history else ""
     formatted_prompt = prompt.format(
         feedback_history=feedback_text, ingredients=ingredients
     )
-
     response = ollama.chat(
         model="llama2", messages=[{"role": "user", "content": formatted_prompt}]
     )
@@ -115,7 +102,6 @@ def suggest_recipe(ingredients, feedback_history):
 
 
 def generate_visual_description(ingredients):
-    """Generate a visual description for the dish using LLaMA."""
     prompt = VISUAL_DESCRIPTION_PROMPT.format(ingredients=ingredients)
     response = ollama.chat(
         model="llama2", messages=[{"role": "user", "content": prompt}]
@@ -139,33 +125,46 @@ def write_markdown_file(recipe, image_path):
     readme_filename = f"recipe_{timestamp}.md"
     with open(readme_filename, "w") as md_file:
         md_file.write(markdown_content)
+    return readme_filename
 
 
 @click.command()
 @click.argument("image_path", type=str)
 def main(image_path):
-    """CLI application to analyze an image for food and suggest recipes."""
+    clear_screen()  # Clear the screen before starting the process
+    print(f"Loading image: {image_path}")
     image_data = load_image(image_path)
+    print(f"Extracting ingredients")
     ingredients = analyze_image_for_food(image_data)
+    clear_screen()
+    print(f"Identified ingredients {ingredients}")
     feedback_history = []
 
     recipe = suggest_recipe(ingredients, feedback_history)
+    print(f"Building recipe")
+    clear_screen()
     print("Initial Recipe Suggestion:\n" + recipe)
 
     while True:
         feedback = input(
             "Enter your feedback (type 'done' if you are satisfied with the recipe): "
         )
+        clear_screen()
+        print(f"Applying feedback: {feedback}")
         if feedback.lower() == "done":
+            clear_screen()
+            print("Generating Recipe Document")
             print("Final Recipe:\n" + recipe)
             visual_description = generate_visual_description(recipe)
             print("Visual Description for Image Generation:\n" + visual_description)
             pipe = setup_model()
             image_path = generate_image(pipe, visual_description)
-            write_markdown_file(recipe, image_path)
+            file_path = write_markdown_file(recipe, image_path)
+            print(f"Find your recipe here: {file_path}")
             break
         else:
             feedback_history.append(feedback)
+            clear_screen()  # Clear the screen for each iteration
             recipe = suggest_recipe(ingredients, feedback_history)
             print("Updated Recipe Based on Feedback:\n" + recipe)
 
