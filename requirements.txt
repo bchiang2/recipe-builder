@@ -1,0 +1,8 @@
+langchain
+click
+ollama
+torch
+diffusers
+safetensors
+transformers
+accelerate
